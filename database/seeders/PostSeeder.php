@@ -17,7 +17,7 @@ class PostSeeder extends Seeder
                     .'integration still appends ?access_token=… to every request, here is exactly what changes '
                     .'and the one-line fix.',
                 'tags' => ['Marketo', 'Integrations', 'API'],
-                'published_at' => '2026-09-05 09:00:00',
+                'published_at' => '2026-09-01 09:00:00',
                 'body' => <<<'MD'
 Marketo has deprecated passing `access_token` as a query string parameter on REST API calls. Going forward,
 the token must be sent as a standard `Authorization: Bearer` header instead. Requests that still put the
