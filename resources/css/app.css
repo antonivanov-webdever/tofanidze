@@ -1,0 +1,235 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
+
+    /* Surfaces — near-black with a cool cast, so accents read as light not paint. */
+    --color-ink-950: #08080b;
+    --color-ink-900: #0c0d11;
+    --color-ink-850: #111319;
+    --color-ink-800: #171a21;
+    --color-ink-700: #22262f;
+
+    /* Accent — enterprise blue into cyan. */
+    --color-accent-300: #7cc4ff;
+    --color-accent-400: #4f9dff;
+    --color-accent-500: #2f7fff;
+    --color-accent-600: #1c5fd6;
+    --color-cyan-accent: #22d3ee;
+
+    --color-muted: #8b93a5;
+    --color-muted-strong: #b6bdcc;
+}
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        background-color: var(--color-ink-950);
+        color: #e8eaf0;
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+        -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection {
+        background-color: color-mix(in oklab, var(--color-accent-500) 35%, transparent);
+        color: #fff;
+    }
+
+    /* Native controls follow the accent instead of the browser's default blue. */
+    input[type='checkbox'],
+    input[type='radio'],
+    input[type='range'],
+    progress {
+        accent-color: var(--color-accent-500);
+    }
+
+    input[type='checkbox'],
+    input[type='radio'] {
+        color-scheme: dark;
+    }
+
+    input[type='date'],
+    input[type='datetime-local'],
+    input[type='time'],
+    select {
+        color-scheme: dark;
+    }
+
+    /* Focus ring: one definition, everywhere, so keyboard users never lose the caret. */
+    :focus-visible {
+        outline: 2px solid var(--color-accent-400);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: var(--color-ink-950);
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--color-ink-700);
+        border-radius: 999px;
+        border: 2px solid var(--color-ink-950);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #333a47;
+    }
+}
+
+@layer components {
+    /* Panel: the single card treatment used across the whole site. */
+    .panel {
+        @apply rounded-2xl border border-white/8 bg-white/[0.025] backdrop-blur-sm;
+    }
+
+    .panel-hover {
+        @apply transition duration-300 hover:border-white/15 hover:bg-white/[0.045];
+    }
+
+    .chip {
+        @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5
+               px-3 py-1 text-xs font-medium text-muted-strong;
+    }
+
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold
+               transition duration-200 disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .btn-primary {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold
+               text-white shadow-lg shadow-accent-500/20 transition duration-200
+               disabled:cursor-not-allowed disabled:opacity-60;
+        background-image: linear-gradient(135deg, var(--color-accent-500), var(--color-accent-600));
+    }
+
+    .btn-primary:hover {
+        background-image: linear-gradient(135deg, var(--color-accent-400), var(--color-accent-500));
+    }
+
+    .btn-ghost {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.03]
+               px-5 py-3 text-sm font-semibold text-muted-strong transition duration-200
+               hover:border-white/25 hover:text-white
+               disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .field {
+        @apply w-full rounded-xl border border-white/10 bg-ink-900/80 px-4 py-3 text-sm text-white
+               placeholder:text-muted/70 transition focus:border-accent-400/60 focus:bg-ink-900
+               focus:outline-none focus:ring-2 focus:ring-accent-500/25;
+    }
+
+    .field-label {
+        @apply mb-2 block text-xs font-semibold uppercase tracking-wider text-muted;
+    }
+
+    .eyebrow {
+        @apply inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent-300;
+    }
+
+    .link-underline {
+        @apply relative text-white transition hover:text-accent-300;
+    }
+
+    /* Gradient text used for the one key phrase per section — never for body copy. */
+    .text-gradient {
+        background-image: linear-gradient(120deg, #ffffff 15%, var(--color-accent-300) 55%, var(--color-cyan-accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+}
+
+@layer utilities {
+    /* Ambient grid: structure without noise. Fades out before it competes with text. */
+    .bg-grid {
+        background-image:
+            linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+    }
+
+    .glow-accent {
+        background: radial-gradient(
+            circle at center,
+            color-mix(in oklab, var(--color-accent-500) 30%, transparent) 0%,
+            transparent 70%
+        );
+    }
+
+    .animate-fade-up {
+        animation: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .marquee-track {
+        animation: marquee 42s linear infinite;
+    }
+}
+
+@keyframes fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Long-form article typography (blog posts). */
+.prose-site {
+    @apply prose prose-invert max-w-none
+           prose-headings:font-semibold prose-headings:tracking-tight
+           prose-h2:mt-12 prose-h2:text-2xl prose-h3:mt-8 prose-h3:text-xl
+           prose-p:text-[15.5px] prose-p:leading-[1.75] prose-p:text-muted-strong
+           prose-li:text-[15.5px] prose-li:text-muted-strong
+           prose-strong:text-white
+           prose-a:text-accent-300 prose-a:no-underline hover:prose-a:underline
+           prose-code:rounded prose-code:bg-white/8 prose-code:px-1.5 prose-code:py-0.5
+           prose-code:text-[13px] prose-code:font-normal prose-code:text-accent-300
+           prose-code:before:content-none prose-code:after:content-none
+           prose-pre:rounded-xl prose-pre:border prose-pre:border-white/10 prose-pre:bg-ink-900
+           prose-pre:text-[13px]
+           prose-blockquote:border-l-accent-500 prose-blockquote:text-muted-strong
+           prose-hr:border-white/10;
+}
