@@ -105,6 +105,62 @@ the runtime. The entrypoint waits for MySQL, runs migrations, and caches config,
 
 ---
 
+## Production: VPS with local MySQL, behind a CDN
+
+`docker-compose.prod.yml` is a separate stack for this specific setup — no bundled MySQL or Mailpit
+container, the app connects to MySQL running directly on the VPS host, and the whole site (not just
+`/build` and images) is expected to sit behind a CDN edge.
+
+```bash
+cp .env.example .env.prod    # fill in real values — see the file's own comments
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec app php artisan db:seed --force
+```
+
+A few things that only matter in this topology, and are easy to miss:
+
+**Local MySQL must accept connections from the container.** The app reaches it via
+`DB_HOST=host.docker.internal` (works on Docker Engine 20.10+ via the `host-gateway` alias already set
+in the compose file). MySQL's `bind-address` needs to cover the docker bridge, not just `127.0.0.1`, and
+the DB user needs a host grant that matches — `'portfolio'@'localhost'` will **not** match connections
+arriving over the bridge network; use `'portfolio'@'%'` (or scope it to the docker subnet once you know it).
+
+**The CDN is the only thing that should ever reach this VPS.** With the whole site — not just static
+files — proxied through the edge, `$request->ip()` in Laravel (used by the contact form's rate limiter
+and stored on every `contact_messages` row) and the HTTPS detection both depend on forwarded headers
+being trustworthy. `docker/nginx/prod.conf` handles this two ways:
+
+1. `set_real_ip_from` (commented out, needs your CDN's actual IP ranges — pull them from your provider's
+   own docs/dashboard, not a hardcoded copy here that can go stale) restricts which connections nginx
+   will trust a forwarded-IP header from at all.
+2. Once trusted, nginx **overwrites** `X-Forwarded-For` / `X-Forwarded-Proto` with its own resolved
+   values before proxying to PHP — the app never sees a client- or CDN-supplied header verbatim.
+
+Fill in the IP ranges, then firewall the VPS itself (`ufw`/security group) so ports 80/443 only accept
+connections from those same ranges. The nginx allowlist alone doesn't stop someone from connecting to the
+VPS directly and skipping the CDN — the firewall is what actually closes that door.
+
+**TLS.** The compose file serves plain HTTP on `:80` and assumes the CDN terminates TLS at the edge
+(e.g. Cloudflare's default "Flexible"/"Full" modes). If your CDN needs to re-encrypt to the origin
+("Full (strict)"), add a `:443` server block with real certs to `docker/nginx/prod.conf`, mount them,
+and publish 443 in the compose file (both are commented scaffolding already).
+
+**`ASSET_URL` is not needed here.** It only matters when assets are served from a *different* domain
+than the site (a dedicated CDN/object-storage hostname). With the CDN edge sitting in front of the same
+domain, `/build/*` and image URLs stay same-origin — the CDN just caches them per the `Cache-Control`
+headers `docker/nginx/prod.conf` already sets (1 year immutable for hashed Vite assets, 30 days for images).
+
+**Cache-bust the social preview image after changing it.** `favicon.svg` and `images/og-default.png`
+have stable filenames with no hash, cached 30 days. If you edit Settings and regenerate the card with
+`php artisan site:og-image`, purge that path on the CDN (or it'll keep serving the old image for up to
+a month).
+
+**Back up the database.** MySQL on the VPS is now the only copy of every case study, article and
+setting — schedule `mysqldump` (and back up `storage/app/public` too, if you've placed files there by
+hand; there's no upload UI yet, cover images are URLs or manually-placed paths).
+
+---
+
 ## Content model
 
 | Model | Notes |
@@ -177,3 +233,6 @@ php artisan optimize             # cache config, routes and views for production
 - [ ] `php artisan site:og-image` after the final settings edit
 - [ ] `npm run build` and `php artisan optimize`
 - [ ] HTTPS enforced (the app forces the `https` scheme when `APP_ENV=production`)
+- [ ] Behind a CDN: `set_real_ip_from` filled in with your provider's ranges, VPS firewalled to those
+      same ranges — see [Production: VPS with local MySQL, behind a CDN](#production-vps-with-local-mysql-behind-a-cdn)
+- [ ] Database backups scheduled (`mysqldump` + `storage/app/public`)
