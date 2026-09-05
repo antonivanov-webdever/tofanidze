@@ -105,11 +105,11 @@ the runtime. The entrypoint waits for MySQL, runs migrations, and caches config,
 
 ---
 
-## Production: VPS with local MySQL, behind a CDN
+## Production: VPS behind a CDN
 
-`docker-compose.prod.yml` is a separate stack for this specific setup — no bundled MySQL or Mailpit
-container, the app connects to MySQL running directly on the VPS host, and the whole site (not just
-`/build` and images) is expected to sit behind a CDN edge.
+`docker-compose.prod.yml` is a separate stack for a VPS deployment — MySQL runs as its own container
+(no manual install or host setup needed), there's no Mailpit, and the whole site (not just `/build` and
+images) is expected to sit behind a CDN edge.
 
 ```bash
 cp .env.example .env.prod    # fill in real values — see the file's own comments
@@ -117,13 +117,20 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env.prod exec app php artisan db:seed --force
 ```
 
+`DB_PASSWORD` and `DB_ROOT_PASSWORD` are required — the stack refuses to start without them rather than
+falling back to the weak defaults the local dev compose file uses.
+
 A few things that only matter in this topology, and are easy to miss:
 
-**Local MySQL must accept connections from the container.** The app reaches it via
-`DB_HOST=host.docker.internal` (works on Docker Engine 20.10+ via the `host-gateway` alias already set
-in the compose file). MySQL's `bind-address` needs to cover the docker bridge, not just `127.0.0.1`, and
-the DB user needs a host grant that matches — `'portfolio'@'localhost'` will **not** match connections
-arriving over the bridge network; use `'portfolio'@'%'` (or scope it to the docker subnet once you know it).
+**MySQL's data lives in the `mysql` named volume.** It survives `docker compose down` and rebuilds, but
+`docker compose down -v` deletes it along with the database — never run that in production without a
+backup in hand. The container's port is intentionally not published to the host or the internet; only
+the `app` service can reach it, over the internal `web` network. Back it up on a schedule:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec mysql \
+  mysqldump -u root -p"$DB_ROOT_PASSWORD" portfolio > backup-$(date +%F).sql
+```
 
 **The CDN is the only thing that should ever reach this VPS.** With the whole site — not just static
 files — proxied through the edge, `$request->ip()` in Laravel (used by the contact form's rate limiter
@@ -155,9 +162,8 @@ have stable filenames with no hash, cached 30 days. If you edit Settings and reg
 `php artisan site:og-image`, purge that path on the CDN (or it'll keep serving the old image for up to
 a month).
 
-**Back up the database.** MySQL on the VPS is now the only copy of every case study, article and
-setting — schedule `mysqldump` (and back up `storage/app/public` too, if you've placed files there by
-hand; there's no upload UI yet, cover images are URLs or manually-placed paths).
+**Back up `storage/app/public` too**, if you've placed files there by hand — there's no upload UI yet,
+cover images are URLs or manually-placed paths. The database backup is covered above.
 
 ---
 
@@ -234,5 +240,5 @@ php artisan optimize             # cache config, routes and views for production
 - [ ] `npm run build` and `php artisan optimize`
 - [ ] HTTPS enforced (the app forces the `https` scheme when `APP_ENV=production`)
 - [ ] Behind a CDN: `set_real_ip_from` filled in with your provider's ranges, VPS firewalled to those
-      same ranges — see [Production: VPS with local MySQL, behind a CDN](#production-vps-with-local-mysql-behind-a-cdn)
+      same ranges — see [Production: VPS behind a CDN](#production-vps-behind-a-cdn)
 - [ ] Database backups scheduled (`mysqldump` + `storage/app/public`)
