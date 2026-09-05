@@ -12,6 +12,95 @@ class PostSeeder extends Seeder
     {
         $posts = [
             [
+                'title' => 'Marketo: access_token Query Param Is Out, Authorization Header Is In',
+                'excerpt' => 'Marketo is retiring token-in-the-URL authentication for its REST API. If your '
+                    .'integration still appends ?access_token=… to every request, here is exactly what changes '
+                    .'and the one-line fix.',
+                'tags' => ['Marketo', 'Integrations', 'API'],
+                'published_at' => '2026-09-05 09:00:00',
+                'body' => <<<'MD'
+Marketo has deprecated passing `access_token` as a query string parameter on REST API calls. Going forward,
+the token must be sent as a standard `Authorization: Bearer` header instead. Requests that still put the
+token in the URL will start failing once the old method is switched off.
+
+## What actually changes
+
+Before:
+
+```
+GET /rest/v1/leads.json?access_token=abcd1234...&filterType=email HTTP/1.1
+Host: 123-ABC-456.mktorest.com
+```
+
+After:
+
+```
+GET /rest/v1/leads.json?filterType=email HTTP/1.1
+Host: 123-ABC-456.mktorest.com
+Authorization: Bearer abcd1234...
+```
+
+Nothing about the token itself changes — you still get it from the identity endpoint the same way. The only
+difference is where it travels: out of the query string and into a header.
+
+## Why it matters beyond "requests will fail"
+
+A token in the URL is not just a deprecated convenience, it is a quiet liability. Query strings get written
+to access logs, proxy logs, browser history and CDN caches — all in plain text. Moving to a header is a real
+security improvement, not just an API formality, and it is worth treating the migration as more than a
+find-and-replace.
+
+## The fix
+
+If your client builds the query string manually:
+
+```php
+// Before
+$response = Http::get("https://{$host}/rest/v1/leads.json", [
+    'access_token' => $token,
+    'filterType' => 'email',
+    'filterValues' => $email,
+]);
+
+// After
+$response = Http::withToken($token)->get("https://{$host}/rest/v1/leads.json", [
+    'filterType' => 'email',
+    'filterValues' => $email,
+]);
+```
+
+`Http::withToken()` sets `Authorization: Bearer <token>` for you. With Guzzle directly, it is the same idea:
+
+```php
+$client->request('GET', $url, [
+    'headers' => ['Authorization' => "Bearer {$token}"],
+    'query' => ['filterType' => 'email', 'filterValues' => $email],
+]);
+```
+
+## Where to check
+
+A handful of places tend to still have the old pattern hiding in them:
+
+- **Shared HTTP client base config** — if `access_token` is injected as a default query parameter for every
+  request, that one change fixes every call site at once.
+- **Webhook or bulk-export helpers** — bulk extract and file-based endpoints are often written separately
+  from the main lead API client and get missed in a quick pass.
+- **Logging and error reporting** — if you were ever logging the full request URL for debugging, check
+  those logs are not the reason the token ended up in the query string in the first place.
+- **Token refresh logic** — unrelated to this change, but worth confirming while you're in this code: the
+  refresh call itself still uses `client_id` / `client_secret` as query params against the identity endpoint,
+  that part is untouched.
+
+## Bottom line
+
+This is a small, mechanical change with a firm deadline attached. Swap the query parameter for a header on
+every Marketo REST call, confirm nothing downstream is still stitching `access_token=` into a URL, and move
+on — but do it before Marketo flips the switch on the old method, not after something starts silently
+returning 401s.
+MD,
+            ],
+            [
                 'title' => 'Idempotent CRM Sync: Why Your Integration Keeps Creating Duplicates',
                 'excerpt' => 'Every retry in a CRM integration is a chance to create a second copy of the same lead. '
                     .'Here is the key design that makes retries safe — and the three places teams usually get it wrong.',
