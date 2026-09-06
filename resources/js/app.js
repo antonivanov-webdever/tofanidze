@@ -116,3 +116,35 @@ Alpine.data('scrollSpy', (ids = []) => ({
 
 window.Alpine = Alpine;
 Alpine.start();
+
+/**
+ * First-party page-view beacon — no cookies, no fingerprinting, no
+ * third-party script. Fires once per page load. Uses sendBeacon so it
+ * survives the page unloading before the request completes; falls back to a
+ * keepalive fetch on browsers without it.
+ */
+(function sendPageViewBeacon() {
+    const payload = JSON.stringify({
+        type: 'page_view',
+        path: window.location.pathname,
+        referrer: document.referrer || null,
+    });
+
+    const url = '/api/v1/events';
+
+    try {
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
+            return;
+        }
+    } catch {
+        // Fall through to fetch.
+    }
+
+    fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+    }).catch(() => {});
+})();

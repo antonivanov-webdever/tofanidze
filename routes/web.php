@@ -53,6 +53,8 @@ Route::get('/robots.txt', function () {
         'Allow: /',
         'Disallow: /admin',
         'Disallow: /admin/',
+        'Disallow: /api',
+        'Disallow: /api/',
         '',
         'Sitemap: '.route('sitemap'),
     ];
