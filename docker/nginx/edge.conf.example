@@ -28,7 +28,7 @@
 # The VPN path uses OPTIONS as the wire-level method (not GET, not POST) —
 # this matches the "universal" Yandex Cloud CDN instruction this was built
 # from, which tested it against the current CDN panel and ships its own
-# verification step (see the /cdn-check location below — run the curl check
+# verification step (see the debug location below — run the curl check
 # from that instruction against your own CDN resource before trusting this;
 # don't take either instruction's method choice on faith). A local `map`
 # below turns OPTIONS back into POST only for the connection to Xray, since
@@ -111,13 +111,22 @@ server {
     http2_max_header_size 128k;
 
     # Debug endpoint to verify OPTIONS-with-a-body actually survives the CDN
-    # intact, before trusting the VPN path. Remove once confirmed working, or
-    # leave it — it reveals nothing except that this origin exists and echoes
-    # request metadata, which is no more informative than any other 204 stub.
-    location = /cdn-check {
-        add_header X-CDN-Origin "ok" always;
-        add_header X-Origin-Method $request_method always;
-        add_header X-Origin-Content-Length $http_content_length always;
+    # intact, before trusting the VPN path. This path and these header names
+    # are copied from a public guide — same problem as the secret path and
+    # xPaddingKey: identical across everyone who used it, so it's a trivial
+    # thing to scan the whole internet for (an OPTIONS request to one fixed
+    # path, checking for one fixed response header — cheaper than a CT-log
+    # search, doesn't even need to know the domain). Rename the path and the
+    # header names before using this, the same way as everything else here.
+    #
+    # DELETE THIS ENTIRE LOCATION BLOCK once the CDN pipeline is confirmed
+    # working end to end (after this project's Этап 9) — it has no purpose
+    # once setup is done, and the least fingerprintable debug endpoint is one
+    # that no longer exists.
+    location = /REPLACE_WITH_DEBUG_CHECK_PATH {
+        add_header X-Debug-Origin "ok" always;
+        add_header X-Debug-Method $request_method always;
+        add_header X-Debug-Content-Length $http_content_length always;
         return 204;
     }
 

@@ -150,9 +150,15 @@ against your own CDN resource before relying on it:
 
 ```bash
 curl -sS -D - -o /dev/null -X OPTIONS --data-binary 'test' \
-  "https://your-cdn-domain/cdn-check?nocache=$(date +%s)"
-# expect: HTTP 204, X-CDN-Origin: ok, X-Origin-Method: OPTIONS, X-Origin-Content-Length: 4
+  "https://your-cdn-domain/your-debug-path?nocache=$(date +%s)"
+# expect: HTTP 204, and whatever debug headers you named in edge.conf.example, echoing
+# the method and a content-length of 4
 ```
+
+The path and header names here are placeholders on purpose — see the "rename before use" comment in
+`docker/nginx/edge.conf.example` right above that location block, and delete the block entirely once this
+has passed (Stage: CDN resource verified end to end) rather than leaving a permanent, easily-scannable
+debug endpoint in production.
 
 If that ever stops passing cleanly (Yandex changes edge behavior — this is explicitly a "cat and mouse game"
 per Xray's own maintainers, not a one-time decision), PUT is the documented fallback: swap
@@ -336,5 +342,6 @@ php artisan optimize             # cache config, routes and views for production
       `docker-compose.prod.yml` on the EU box — its nginx binds to that address
 - [ ] Reality keypair generated **on the EU box**, public key copied into the RU Origin's outbound config,
       shortId matches on both sides, camouflage domain verified against the actual EU server
-- [ ] `curl -X OPTIONS .../cdn-check` verified clean through the CDN before relying on the VPN path
+- [ ] Debug verification path/headers renamed from the guide defaults, checked clean through the CDN,
+      then the whole debug location deleted from `edge.conf` once confirmed
 - [ ] Database backups scheduled (`mysqldump` + `storage/app/public`)
