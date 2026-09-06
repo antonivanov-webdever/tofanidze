@@ -37,7 +37,16 @@ Route::get('/blog', [PostController::class, 'index'])->name('blog.index');
 Route::get('/blog/{post}', [PostController::class, 'show'])->name('blog.show');
 
 Route::get('/contact', [ContactController::class, 'show'])->name('contact.show');
-Route::post('/contact', [ContactController::class, 'store'])
+
+// OPTIONS, not POST: Yandex Cloud CDN disables POST/PUT/PATCH/DELETE by
+// default and enabling them requires a support request (routinely declined,
+// per public reports). OPTIONS is already proven to pass through — it's what
+// the VPN's own XHTTP path relies on — so the contact form reuses it here.
+// This is never confused with a real CORS preflight: a preflight only fires
+// for cross-origin requests and always carries Access-Control-Request-Method,
+// a header the Fetch API forbids application code from setting, so Laravel's
+// own preflight detection never intercepts this fetch call.
+Route::options('/contact', [ContactController::class, 'store'])
     ->middleware('throttle:contact')
     ->name('contact.store');
 

@@ -7,7 +7,7 @@ use App\Mail\ContactMessageReceived;
 use App\Models\ContactMessage;
 use App\Support\Site;
 use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -19,7 +19,12 @@ class ContactController extends Controller
         return view('pages.contact');
     }
 
-    public function store(StoreContactRequest $request, Site $site): RedirectResponse
+    /**
+     * Submitted via fetch(), not a plain form post — see the route
+     * definition for why. Always responds JSON; validation failures are
+     * turned into a 422 JSON body automatically by the FormRequest.
+     */
+    public function store(StoreContactRequest $request, Site $site): JsonResponse
     {
         $message = ContactMessage::create($request->payload());
 
@@ -33,8 +38,8 @@ class ContactController extends Controller
             ]);
         }
 
-        return redirect()
-            ->route('contact.show')
-            ->with('status', "Thanks, {$message->name} — your message landed. I usually reply within one business day.");
+        return response()->json([
+            'message' => "Thanks, {$message->name} — your message landed. I usually reply within one business day.",
+        ]);
     }
 }

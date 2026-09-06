@@ -11,30 +11,21 @@
     <div class="mx-auto max-w-6xl px-5 py-16 sm:px-8">
         <div class="grid gap-10 lg:grid-cols-[1.4fr_1fr]">
             {{-- ───────────────── Form ───────────────── --}}
-            <div>
-                @if (session('status'))
-                    <div class="mb-6 flex items-start gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-4"
-                         role="status">
-                        <x-icon name="check" class="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-                        <p class="text-sm text-emerald-200">{{ session('status') }}</p>
-                    </div>
-                @endif
+            {{-- Submitted via fetch(), not a plain POST — see routes/web.php --}}
+            <div x-data="contactForm()">
+                <div x-show="succeeded" x-cloak
+                     class="mb-6 flex items-start gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-4"
+                     role="status">
+                    <x-icon name="check" class="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+                    <p class="text-sm text-emerald-200" x-text="successMessage"></p>
+                </div>
 
-                @if ($errors->any())
-                    <div class="mb-6 rounded-xl border border-red-400/25 bg-red-400/10 p-4" role="alert">
-                        <p class="text-sm font-semibold text-red-200">Please fix the following:</p>
-                        <ul class="mt-2 space-y-1 text-sm text-red-200/90">
-                            @foreach ($errors->all() as $error)
-                                <li>· {{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
+                <div x-show="generalError" x-cloak
+                     class="mb-6 flex items-start gap-3 rounded-xl border border-red-400/25 bg-red-400/10 p-4" role="alert">
+                    <p class="text-sm text-red-200" x-text="generalError"></p>
+                </div>
 
-                <form method="POST" action="{{ route('contact.store') }}" class="panel space-y-5 p-6 sm:p-8">
-                    @csrf
-                    <input type="hidden" name="rendered_at" value="{{ time() }}">
-
+                <form action="{{ route('contact.store') }}" class="panel space-y-5 p-6 sm:p-8" @submit.prevent="submit($event)">
                     {{-- Honeypot: hidden from humans, irresistible to bots. --}}
                     <div class="absolute left-[-9999px]" aria-hidden="true">
                         <label for="website">Website</label>
@@ -45,29 +36,23 @@
                         <div>
                             <label for="name" class="field-label">Your name <span class="text-accent-400">*</span></label>
                             <input type="text" id="name" name="name" required autocomplete="name"
-                                   value="{{ old('name') }}"
-                                   @class(['field', 'border-red-400/50' => $errors->has('name')])
-                                   placeholder="Jane Doe">
-                            @error('name')
-                                <p class="mt-1.5 text-xs text-red-300">{{ $message }}</p>
-                            @enderror
+                                   :class="errors.name && 'border-red-400/50'"
+                                   class="field" placeholder="Jane Doe">
+                            <p class="mt-1.5 text-xs text-red-300" x-show="errors.name" x-text="errors.name"></p>
                         </div>
 
                         <div>
                             <label for="email" class="field-label">Email <span class="text-accent-400">*</span></label>
                             <input type="email" id="email" name="email" required autocomplete="email"
-                                   value="{{ old('email') }}"
-                                   @class(['field', 'border-red-400/50' => $errors->has('email')])
-                                   placeholder="jane@company.com">
-                            @error('email')
-                                <p class="mt-1.5 text-xs text-red-300">{{ $message }}</p>
-                            @enderror
+                                   :class="errors.email && 'border-red-400/50'"
+                                   class="field" placeholder="jane@company.com">
+                            <p class="mt-1.5 text-xs text-red-300" x-show="errors.email" x-text="errors.email"></p>
                         </div>
 
                         <div>
                             <label for="company" class="field-label">Company</label>
                             <input type="text" id="company" name="company" autocomplete="organization"
-                                   value="{{ old('company') }}" class="field" placeholder="Acme Inc.">
+                                   class="field" placeholder="Acme Inc.">
                         </div>
 
                         <div>
@@ -81,7 +66,7 @@
                                     '€40k+',
                                     'Ongoing / retainer',
                                 ] as $range)
-                                    <option value="{{ $range }}" @selected(old('budget') === $range)>{{ $range }}</option>
+                                    <option value="{{ $range }}">{{ $range }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -89,24 +74,22 @@
 
                     <div>
                         <label for="subject" class="field-label">Subject</label>
-                        <input type="text" id="subject" name="subject" value="{{ old('subject') }}"
+                        <input type="text" id="subject" name="subject"
                                class="field" placeholder="Partner portal with Salesforce sync">
                     </div>
 
-                    <div x-data="{ count: {{ strlen(old('message', '')) }} }">
+                    <div x-data="{ count: 0 }">
                         <label for="message" class="field-label">
                             Project details <span class="text-accent-400">*</span>
                         </label>
                         <textarea id="message" name="message" rows="7" required
                                   x-on:input="count = $event.target.value.length"
-                                  @class(['field resize-y', 'border-red-400/50' => $errors->has('message')])
-                                  placeholder="What are you building, what is currently in place, and what does success look like?">{{ old('message') }}</textarea>
+                                  :class="errors.message && 'border-red-400/50'"
+                                  class="field resize-y"
+                                  placeholder="What are you building, what is currently in place, and what does success look like?"></textarea>
                         <div class="mt-1.5 flex items-center justify-between">
-                            @error('message')
-                                <p class="text-xs text-red-300">{{ $message }}</p>
-                            @else
-                                <p class="text-xs text-muted">The more context, the more useful my answer.</p>
-                            @enderror
+                            <p class="text-xs text-red-300" x-show="errors.message" x-text="errors.message"></p>
+                            <p class="text-xs text-muted" x-show="!errors.message">The more context, the more useful my answer.</p>
                             <span class="font-mono text-xs text-muted" x-text="`${count}/5000`">0/5000</span>
                         </div>
                     </div>
@@ -115,9 +98,9 @@
                         <p class="text-xs leading-relaxed text-muted">
                             Your details are used only to reply to this enquiry.
                         </p>
-                        <button type="submit" class="btn-primary w-full sm:w-auto">
-                            Send message
-                            <x-icon name="arrow-right" class="h-4 w-4" />
+                        <button type="submit" class="btn-primary w-full sm:w-auto" :disabled="submitting">
+                            <span x-text="submitting ? 'Sending…' : 'Send message'"></span>
+                            <x-icon name="arrow-right" class="h-4 w-4" x-show="!submitting" />
                         </button>
                     </div>
                 </form>

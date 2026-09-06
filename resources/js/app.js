@@ -114,14 +114,92 @@ Alpine.data('scrollSpy', (ids = []) => ({
     },
 }));
 
+/**
+ * Contact form submission. A plain <form method="POST"> can't send OPTIONS —
+ * HTML forms only support GET/POST — so this is fetch-driven instead. See the
+ * route definition (routes/web.php) for why OPTIONS is required here at all.
+ */
+Alpine.data('contactForm', () => ({
+    submitting: false,
+    succeeded: false,
+    successMessage: '',
+    generalError: '',
+    errors: {},
+    renderedAt: Math.floor(Date.now() / 1000),
+
+    async submit(event) {
+        this.submitting = true;
+        this.succeeded = false;
+        this.generalError = '';
+        this.errors = {};
+
+        const form = event.target;
+        const data = Object.fromEntries(new FormData(form).entries());
+        data.rendered_at = this.renderedAt;
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'OPTIONS',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
+                body: JSON.stringify(data),
+            });
+
+            if (response.status === 422) {
+                const body = await response.json();
+                const fieldErrors = { ...(body.errors ?? {}) };
+
+                // The honeypot has no visible field to attach an error to —
+                // surface it as a generic failure instead.
+                if (fieldErrors.website) {
+                    this.generalError = 'Your submission looked automated. Please try again.';
+                    delete fieldErrors.website;
+                }
+
+                this.errors = Object.fromEntries(
+                    Object.entries(fieldErrors).map(([field, messages]) => [field, messages[0]]),
+                );
+                return;
+            }
+
+            if (response.status === 429) {
+                this.generalError = "You've sent a few of these already — please wait a bit before trying again.";
+                return;
+            }
+
+            if (!response.ok) {
+                this.generalError = 'Something went wrong sending this — please try again or email me directly.';
+                return;
+            }
+
+            const body = await response.json();
+            this.succeeded = true;
+            this.successMessage = body.message;
+            form.reset();
+        } catch {
+            this.generalError = 'Could not reach the server — check your connection and try again.';
+        } finally {
+            this.submitting = false;
+        }
+    },
+}));
+
 window.Alpine = Alpine;
 Alpine.start();
 
 /**
  * First-party page-view beacon — no cookies, no fingerprinting, no
- * third-party script. Fires once per page load. Uses sendBeacon so it
- * survives the page unloading before the request completes; falls back to a
- * keepalive fetch on browsers without it.
+ * third-party script. Fires once per page load.
+ *
+ * Method is OPTIONS, not POST: Yandex Cloud CDN disables POST/PUT/PATCH/DELETE
+ * by default (a support request to enable them is routinely declined per
+ * public reports), while OPTIONS already passes through — it's what the
+ * VPN's own XHTTP path relies on. This also rules out navigator.sendBeacon(),
+ * which only ever sends POST — keepalive fetch is the closest equivalent for
+ * surviving a page unload with an arbitrary method.
  */
 (function sendPageViewBeacon() {
     const payload = JSON.stringify({
@@ -130,19 +208,8 @@ Alpine.start();
         referrer: document.referrer || null,
     });
 
-    const url = '/api/v1/events';
-
-    try {
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
-            return;
-        }
-    } catch {
-        // Fall through to fetch.
-    }
-
-    fetch(url, {
-        method: 'POST',
+    fetch('/api/v1/events', {
+        method: 'OPTIONS',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
         keepalive: true,

@@ -27,7 +27,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
     // First-party page-view beacon — no third-party analytics script, no
     // cookies, no fingerprinting. Fired once per page load from resources/js/app.js.
-    Route::post('events', [EventController::class, 'store'])
+    //
+    // OPTIONS, not POST: see the matching comment on the /contact route in
+    // routes/web.php for why — same CDN limitation, same fix.
+    Route::options('events', [EventController::class, 'store'])
         ->middleware('throttle:events')
         ->name('events.store');
 });

@@ -82,7 +82,7 @@ class ApiTest extends TestCase
 
     public function test_event_beacon_stores_a_page_view(): void
     {
-        $this->postJson('/api/v1/events', [
+        $this->optionsJson('/api/v1/events', [
             'type' => 'page_view',
             'path' => '/projects/some-case-study',
             'referrer' => 'https://google.com',
@@ -96,7 +96,7 @@ class ApiTest extends TestCase
 
     public function test_event_beacon_rejects_an_unknown_type(): void
     {
-        $this->postJson('/api/v1/events', [
+        $this->optionsJson('/api/v1/events', [
             'type' => 'suspicious_custom_type',
             'path' => '/',
         ])->assertUnprocessable();
@@ -106,7 +106,7 @@ class ApiTest extends TestCase
 
     public function test_event_beacon_requires_a_path_starting_with_a_slash(): void
     {
-        $this->postJson('/api/v1/events', [
+        $this->optionsJson('/api/v1/events', [
             'type' => 'page_view',
             'path' => 'not-a-path',
         ])->assertUnprocessable();
@@ -115,11 +115,11 @@ class ApiTest extends TestCase
     public function test_event_beacon_is_rate_limited(): void
     {
         for ($i = 0; $i < 20; $i++) {
-            $this->postJson('/api/v1/events', ['type' => 'page_view', 'path' => '/'])
+            $this->optionsJson('/api/v1/events', ['type' => 'page_view', 'path' => '/'])
                 ->assertNoContent();
         }
 
-        $this->postJson('/api/v1/events', ['type' => 'page_view', 'path' => '/'])
+        $this->optionsJson('/api/v1/events', ['type' => 'page_view', 'path' => '/'])
             ->assertStatus(429);
 
         $this->assertSame(20, AnalyticsEvent::count());

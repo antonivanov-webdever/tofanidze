@@ -27,13 +27,24 @@ class ContactFormTest extends TestCase
         ], $overrides);
     }
 
+    /**
+     * Submitted via OPTIONS, not POST — Yandex Cloud CDN disables POST by
+     * default (see routes/web.php for the full reasoning), so the front end
+     * calls this route with fetch(..., {method: 'OPTIONS'}) instead of a
+     * plain form post.
+     */
+    protected function submit(array $payload): \Illuminate\Testing\TestResponse
+    {
+        return $this->optionsJson(route('contact.store'), $payload);
+    }
+
     public function test_it_stores_the_message_and_notifies_by_email(): void
     {
         Mail::fake();
 
-        $this->post(route('contact.store'), $this->payload())
-            ->assertRedirect(route('contact.show'))
-            ->assertSessionHas('status');
+        $this->submit($this->payload())
+            ->assertOk()
+            ->assertJsonStructure(['message']);
 
         $this->assertDatabaseHas('contact_messages', [
             'email' => 'jane@example.com',
@@ -48,34 +59,36 @@ class ContactFormTest extends TestCase
         Mail::fake();
         Setting::put('contact_recipient', 'leads@example.com');
 
-        $this->post(route('contact.store'), $this->payload());
+        $this->submit($this->payload());
 
         Mail::assertSent(ContactMessageReceived::class, fn ($mail) => $mail->hasTo('leads@example.com'));
     }
 
     public function test_it_validates_required_fields(): void
     {
-        $this->post(route('contact.store'), $this->payload([
+        $this->submit($this->payload([
             'name' => '',
             'email' => 'not-an-email',
             'message' => 'too short',
-        ]))->assertSessionHasErrors(['name', 'email', 'message']);
+        ]))->assertUnprocessable()->assertJsonValidationErrors(['name', 'email', 'message']);
 
         $this->assertDatabaseCount('contact_messages', 0);
     }
 
     public function test_it_rejects_submissions_that_fill_the_honeypot(): void
     {
-        $this->post(route('contact.store'), $this->payload(['website' => 'https://spam.example']))
-            ->assertSessionHasErrors('website');
+        $this->submit($this->payload(['website' => 'https://spam.example']))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('website');
 
         $this->assertDatabaseCount('contact_messages', 0);
     }
 
     public function test_it_rejects_submissions_sent_faster_than_a_human_could_type(): void
     {
-        $this->post(route('contact.store'), $this->payload(['rendered_at' => time()]))
-            ->assertSessionHasErrors('message');
+        $this->submit($this->payload(['rendered_at' => time()]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('message');
 
         $this->assertDatabaseCount('contact_messages', 0);
     }
@@ -84,9 +97,9 @@ class ContactFormTest extends TestCase
     {
         Mail::shouldReceive('to->send')->andThrow(new \RuntimeException('SMTP down'));
 
-        $this->post(route('contact.store'), $this->payload())
-            ->assertRedirect(route('contact.show'))
-            ->assertSessionHas('status');
+        $this->submit($this->payload())
+            ->assertOk()
+            ->assertJsonStructure(['message']);
 
         $this->assertDatabaseCount('contact_messages', 1);
     }
@@ -95,7 +108,7 @@ class ContactFormTest extends TestCase
     {
         Mail::fake();
 
-        $this->post(route('contact.store'), $this->payload());
+        $this->submit($this->payload());
 
         $message = ContactMessage::sole();
 
