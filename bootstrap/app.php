@@ -15,12 +15,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => route('admin.login'));
         $middleware->redirectUsersTo(fn (Request $request) => route('admin.dashboard'));
 
-        // Safe as '*' only because nginx is the sole proxy PHP-FPM ever talks to
-        // (not exposed outside the docker network) and, in production, nginx
-        // itself overwrites X-Forwarded-For/-Proto with its own real_ip-resolved
-        // values before this ever runs — see docker/nginx/prod.conf. If PHP-FPM
-        // is ever reachable from anywhere else, or that header rewrite is
-        // removed, this must be scoped to specific trusted proxy IPs instead.
+        // Safe as '*' only because PHP-FPM is never reachable except through
+        // this chain: bare-metal edge nginx (docker/nginx/edge.conf.example,
+        // resolves the real visitor IP via real_ip_module, scoped to the
+        // CDN's ranges) → this Docker nginx on loopback (docker/nginx/prod.conf,
+        // trusts the edge as its only possible caller and passes its headers
+        // through unmodified) → PHP-FPM, not exposed outside the docker
+        // network. If PHP-FPM is ever reachable any other way, or either of
+        // those nginx hops changes, this must be scoped to specific trusted
+        // proxy IPs instead.
         $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {

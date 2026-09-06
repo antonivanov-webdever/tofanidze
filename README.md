@@ -105,11 +105,27 @@ the runtime. The entrypoint waits for MySQL, runs migrations, and caches config,
 
 ---
 
-## Production: VPS behind a CDN
+## Production: VPS behind a CDN, sharing a host with Xray/XHTTP
 
-`docker-compose.prod.yml` is a separate stack for a VPS deployment — MySQL runs as its own container
-(no manual install or host setup needed), there's no Mailpit, and the whole site (not just `/build` and
-images) is expected to sit behind a CDN edge.
+This deployment shares the VPS with an Xray (XHTTP) VPN endpoint sitting behind the same CDN — this site
+is the "cover": to anyone who isn't the VPN client, or anyone who finds the origin's IP and connects
+directly, it's just a working portfolio site. That means **two nginx instances**, not one:
+
+```
+client → CDN (terminates TLS) → edge nginx, bare-metal, :443
+                                    ├─ VPN path  → 127.0.0.1:8080 (Xray)
+                                    └─ everything else → 127.0.0.1:8081 (this stack's nginx)
+```
+
+- **`docker/nginx/edge.conf.example`** — the *outer* nginx. Installed via `apt install nginx` directly
+  on the VPS (not in Docker — it needs to share the host with Xray/3x-ui, which aren't containerized in
+  the usual setup). It owns `:80`/`:443`, terminates TLS with a Certbot cert, proxies the VPN path to
+  Xray, and reverse-proxies everything else to this app. It's a template, not meant to be committed
+  filled in — copy it to the server and fill in the real domain and secret path there, same reasoning as
+  `.env.example`.
+- **`docker-compose.prod.yml`** — the *inner* stack: app, MySQL (its own container, no manual install
+  needed) and this repo's nginx, which now binds only to `127.0.0.1:8081` — reachable from the edge
+  nginx on the same host, not from the internet.
 
 ```bash
 cp .env.example .env.prod    # fill in real values — see the file's own comments
@@ -122,6 +138,41 @@ falling back to the weak defaults the local dev compose file uses.
 
 A few things that only matter in this topology, and are easy to miss:
 
+**The real client IP is resolved once, at the edge — the inner nginx just trusts it.**
+`edge.conf.example` uses `real_ip_module`, scoped to Yandex Cloud CDN's own published edge ranges (kept
+current by `docker/nginx/refresh-yc-cdn-ips.sh`, see below), so `$remote_addr` there is the genuine
+visitor IP rather than the CDN's. It forwards that on to the inner Docker nginx over loopback, which — because
+its port is only reachable from that one trusted, same-host process — passes the header through as-is
+rather than re-deriving it. This is what the contact form's per-IP rate limiter and the IP stored on
+every `contact_messages` row rely on.
+
+Before trusting this in production: **Yandex's docs don't explicitly confirm Cloud CDN forwards
+`X-Forwarded-For`** (they do for some other products in the same platform). Verify it empirically —
+temporarily log `$http_x_forwarded_for` for a request made through the CDN domain and confirm it's a
+plausible external IP — before relying on it for anything security-relevant.
+
+**Keep the IP allowlist current:**
+
+```bash
+sudo cp docker/nginx/refresh-yc-cdn-ips.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/refresh-yc-cdn-ips.sh
+sudo /usr/local/bin/refresh-yc-cdn-ips.sh          # run once before nginx's first start — edge.conf
+                                                    # includes its output unconditionally
+echo '17 4 * * * root /usr/local/bin/refresh-yc-cdn-ips.sh >> /var/log/yc-cdn-ips-refresh.log 2>&1' \
+  | sudo tee /etc/cron.d/refresh-yc-cdn-ips
+```
+
+It pulls from Yandex's own published feed (`tech.cdn.yandex.net/prefixes/yc.json`) rather than a
+hardcoded copy that would go stale, validates the result before writing it, and reloads nginx only if
+`nginx -t` passes against the new list.
+
+**Firewall the VPS itself** (`ufw`/security group) so `:80`/`:443` only accept connections from the same
+CDN ranges. The allowlist above only decides which forwarded-IP headers nginx *trusts* — it doesn't stop
+someone from connecting to the VPS's real IP directly and skipping the CDN entirely. For a VPN endpoint
+you're specifically trying to keep off a censor's radar, that's the actual security boundary, not a
+header-spoofing nuisance — the origin's IP is visible in DNS (the A record used to point the CDN at it),
+so this is not a hypothetical.
+
 **MySQL's data lives in the `mysql` named volume.** It survives `docker compose down` and rebuilds, but
 `docker compose down -v` deletes it along with the database — never run that in production without a
 backup in hand. The container's port is intentionally not published to the host or the internet; only
@@ -131,26 +182,6 @@ the `app` service can reach it, over the internal `web` network. Back it up on a
 docker compose -f docker-compose.prod.yml --env-file .env.prod exec mysql \
   mysqldump -u root -p"$DB_ROOT_PASSWORD" portfolio > backup-$(date +%F).sql
 ```
-
-**The CDN is the only thing that should ever reach this VPS.** With the whole site — not just static
-files — proxied through the edge, `$request->ip()` in Laravel (used by the contact form's rate limiter
-and stored on every `contact_messages` row) and the HTTPS detection both depend on forwarded headers
-being trustworthy. `docker/nginx/prod.conf` handles this two ways:
-
-1. `set_real_ip_from` (commented out, needs your CDN's actual IP ranges — pull them from your provider's
-   own docs/dashboard, not a hardcoded copy here that can go stale) restricts which connections nginx
-   will trust a forwarded-IP header from at all.
-2. Once trusted, nginx **overwrites** `X-Forwarded-For` / `X-Forwarded-Proto` with its own resolved
-   values before proxying to PHP — the app never sees a client- or CDN-supplied header verbatim.
-
-Fill in the IP ranges, then firewall the VPS itself (`ufw`/security group) so ports 80/443 only accept
-connections from those same ranges. The nginx allowlist alone doesn't stop someone from connecting to the
-VPS directly and skipping the CDN — the firewall is what actually closes that door.
-
-**TLS.** The compose file serves plain HTTP on `:80` and assumes the CDN terminates TLS at the edge
-(e.g. Cloudflare's default "Flexible"/"Full" modes). If your CDN needs to re-encrypt to the origin
-("Full (strict)"), add a `:443` server block with real certs to `docker/nginx/prod.conf`, mount them,
-and publish 443 in the compose file (both are commented scaffolding already).
 
 **`ASSET_URL` is not needed here.** It only matters when assets are served from a *different* domain
 than the site (a dedicated CDN/object-storage hostname). With the CDN edge sitting in front of the same
@@ -164,6 +195,11 @@ a month).
 
 **Back up `storage/app/public` too**, if you've placed files there by hand — there's no upload UI yet,
 cover images are URLs or manually-placed paths. The database backup is covered above.
+
+**If you're not chaining this behind Xray/a VPN at all** — the simpler version of this setup (this stack's
+nginx facing the CDN directly on `:80`/`:443`, no edge nginx, no MySQL-in-Docker requirement to skip) is
+what an earlier version of this section covered; the compose file and `docker/nginx/prod.conf` would need
+their port/TLS assumptions adjusted back if that's actually what you need instead.
 
 ---
 
@@ -240,5 +276,5 @@ php artisan optimize             # cache config, routes and views for production
 - [ ] `npm run build` and `php artisan optimize`
 - [ ] HTTPS enforced (the app forces the `https` scheme when `APP_ENV=production`)
 - [ ] Behind a CDN: `set_real_ip_from` filled in with your provider's ranges, VPS firewalled to those
-      same ranges — see [Production: VPS behind a CDN](#production-vps-behind-a-cdn)
+      same ranges — see [Production: VPS behind a CDN, sharing a host with Xray/XHTTP](#production-vps-behind-a-cdn-sharing-a-host-with-xrayxhttp)
 - [ ] Database backups scheduled (`mysqldump` + `storage/app/public`)
