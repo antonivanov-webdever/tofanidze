@@ -12,7 +12,12 @@ services:
       APP_ENV: ${APP_ENV:-local}
       APP_DEBUG: ${APP_DEBUG:-true}
       APP_URL: ${APP_URL:-http://localhost:8080}
-      APP_KEY: ${APP_KEY}
+      # Required: an env var Compose sets to "" still counts as "set" to
+      # Laravel's Dotenv, which then won't load whatever entrypoint.sh's own
+      # key:generate fallback writes to .env — artisan commands won't notice,
+      # only real HTTP requests will, once cookie encryption needs a key that
+      # was never actually there. Generate one: echo "base64:$(openssl rand -base64 32)"
+      APP_KEY: ${APP_KEY:?set a generated key, e.g. echo "base64:$(openssl rand -base64 32)"}
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306

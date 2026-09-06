@@ -45,7 +45,15 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       APP_URL: ${APP_URL}
-      APP_KEY: ${APP_KEY}
+      # Required, not just recommended: Compose sets this env var even when
+      # empty, and Laravel's Dotenv won't override an env var that already
+      # exists (even an empty one) with what entrypoint.sh writes to .env —
+      # so an empty value here silently defeats the entrypoint's own
+      # key:generate fallback. artisan commands (migrate, config:cache) never
+      # notice; only real HTTP requests do, once cookie encryption middleware
+      # needs a key that was never actually there. Generate one yourself:
+      #   echo "base64:$(openssl rand -base64 32)"
+      APP_KEY: ${APP_KEY:?set a generated key in .env.prod, e.g. echo "base64:$(openssl rand -base64 32)"}
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306
