@@ -63,6 +63,15 @@ WORKDIR /var/www/html
 COPY --from=vendor /app /var/www/html
 COPY --from=assets /app/public/build /var/www/html/public/build
 
+# nginx runs in its own container with none of this app's code — it only
+# gets `public/` via a shared volume (see docker-compose*.yml). A named
+# volume auto-populates from the image the FIRST time it's empty, but that's
+# a race between which container's (very different) image content wins, and
+# it never repopulates on a later rebuild anyway. This snapshot is what
+# entrypoint.sh copies into that volume on every single start instead,
+# so nginx always has exactly what this image just built, deploy after deploy.
+RUN cp -r /var/www/html/public /var/www/html/public-dist
+
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 

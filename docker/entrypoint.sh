@@ -19,6 +19,12 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
+# public/ is a volume shared with the standalone nginx container (which has
+# no code of its own) — refresh it from this image's build on every start.
+# See the matching comment in the Dockerfile for why this can't just be a
+# one-time volume populate.
+cp -r /var/www/html/public-dist/. /var/www/html/public/
+
 if [ -z "$APP_KEY" ]; then
     php artisan key:generate --force
 fi

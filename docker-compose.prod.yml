@@ -62,6 +62,7 @@ services:
       LOG_CHANNEL: daily
     volumes:
       - storage:/var/www/html/storage
+      - public:/var/www/html/public
     networks: [web]
 
   nginx:
@@ -74,6 +75,7 @@ services:
       # and not even from this host's own public interface.
       - "10.66.66.2:8081:80"
     volumes:
+      - public:/var/www/html/public:ro
       - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [web]
 
@@ -97,6 +99,7 @@ services:
 volumes:
   mysql:
   storage:
+  public:
 
 networks:
   web:
