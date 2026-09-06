@@ -116,9 +116,12 @@ server {
 
     client_max_body_size 0;
     client_header_buffer_size 64k;
+    # Covers what http2_max_field_size/http2_max_header_size used to handle
+    # separately — both are obsolete in current nginx (merged into this
+    # directive) and only produce a deprecation warning if left in, with no
+    # effect either way. Needed because Xray's padding inflates header sizes
+    # well past nginx's small defaults.
     large_client_header_buffers 8 128k;
-    http2_max_field_size 128k;
-    http2_max_header_size 128k;
 
     # Debug endpoint to verify OPTIONS-with-a-body actually survives the CDN
     # intact, before trusting the VPN path. This path and these header names
