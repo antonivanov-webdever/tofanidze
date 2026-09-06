@@ -1,0 +1,74 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "from-yandex-cdn",
+      "listen": "127.0.0.1",
+      "port": 8003,
+      "protocol": "vless",
+      "settings": {
+        "users": [
+          {
+            "id": "REPLACE_WITH_UUID"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "mode": "packet-up",
+          "path": "REPLACE_WITH_SECRET_PATH",
+          "xPaddingObfsMode": true,
+          "xPaddingKey": "REPLACE_WITH_PADDING_KEY",
+          "xPaddingHeader": "X-Cache",
+          "xPaddingMethod": "tokenish",
+          "xPaddingPlacement": "queryInHeader"
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "to-eu-exit",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "REPLACE_WITH_EU_PUBLIC_IP",
+            "port": 443,
+            "users": [
+              {
+                "id": "REPLACE_WITH_UUID",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "REPLACE_WITH_REALITY_CAMOUFLAGE_DOMAIN",
+          "fingerprint": "chrome",
+          "publicKey": "REPLACE_WITH_EU_REALITY_PUBLIC_KEY",
+          "shortId": "REPLACE_WITH_REALITY_SHORT_ID",
+          "spiderX": ""
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole"
+    }
+  ]
+}

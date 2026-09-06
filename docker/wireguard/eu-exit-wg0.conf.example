@@ -1,0 +1,21 @@
+# WireGuard config for the EU Exit server (runs the Laravel stack + the
+# Xray Reality exit). Template — fill in and copy to /etc/wireguard/wg0.conf
+# on the EU box. Do NOT commit the filled-in version — see ru-origin-wg0.conf.example
+# for the full explanation of what this link is for and why it's separate
+# from the client-facing Xray/Reality tunnel.
+
+[Interface]
+PrivateKey = REPLACE_WITH_EU_PRIVATE_KEY
+Address = 10.66.66.2/24
+ListenPort = 51820
+
+[Peer]
+# The RU Origin server.
+PublicKey = REPLACE_WITH_RU_PUBLIC_KEY
+# No Endpoint here on purpose: the RU box already has one configured for
+# this peer and will initiate the connection (it's the one with a stable,
+# known public IP from this link's point of view — either side can omit
+# Endpoint and let the other dial in, but only set it on one side to avoid
+# both trying to redial each other on every keepalive).
+AllowedIPs = 10.66.66.1/32
+PersistentKeepalive = 25

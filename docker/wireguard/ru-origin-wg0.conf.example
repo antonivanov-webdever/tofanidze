@@ -1,0 +1,32 @@
+# WireGuard config for the RU Origin server (CDN-facing edge).
+# Template — fill in and copy to /etc/wireguard/wg0.conf on the RU box.
+# Do NOT commit the filled-in version (private key + peer public key are
+# secrets), same reasoning as .env.example and the other .example files here.
+#
+# Purpose: a private, server-to-server-only link between the RU Origin and
+# the EU Exit server, used ONLY to reverse-proxy "real website" traffic
+# (the cover site) from RU's edge nginx to the EU box's nginx+Laravel stack.
+# It is deliberately separate from the Xray/Reality tunnel that carries the
+# VPN client's actual proxied traffic — different purpose, different
+# failure domain, and it means nothing about this link needs to look like
+# or blend in with anything; it's plain infra between two servers you own,
+# never seen by a client, a censor, or the CDN.
+#
+# Generate this server's keypair on the RU box:
+#   wg genkey | tee ru-private.key | wg pubkey > ru-public.key
+# Generate the EU server's keypair the same way, on the EU box.
+# Exchange the two PUBLIC keys (not the private ones) between the configs.
+
+[Interface]
+# Private key generated ON THIS SERVER — never share it, never put the EU
+# server's private key here.
+PrivateKey = REPLACE_WITH_RU_PRIVATE_KEY
+Address = 10.66.66.1/24
+ListenPort = 51820
+
+[Peer]
+# The EU Exit server.
+PublicKey = REPLACE_WITH_EU_PUBLIC_KEY
+Endpoint = REPLACE_WITH_EU_PUBLIC_IP:51820
+AllowedIPs = 10.66.66.2/32
+PersistentKeepalive = 25

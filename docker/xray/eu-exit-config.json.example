@@ -1,0 +1,38 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "from-ru-origin",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "REPLACE_WITH_UUID",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "dest": "REPLACE_WITH_REALITY_CAMOUFLAGE_DOMAIN:443",
+          "serverNames": ["REPLACE_WITH_REALITY_CAMOUFLAGE_DOMAIN"],
+          "privateKey": "REPLACE_WITH_EU_REALITY_PRIVATE_KEY",
+          "shortIds": ["REPLACE_WITH_REALITY_SHORT_ID"]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "internet",
+      "protocol": "freedom"
+    }
+  ]
+}

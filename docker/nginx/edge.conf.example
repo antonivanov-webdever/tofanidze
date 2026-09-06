@@ -1,32 +1,48 @@
-# Bare-metal nginx config for the VPS host — NOT part of the Docker stack.
-# This is a TEMPLATE (hence .example): once you fill in the origin domain and
-# secret path, the result contains values you don't want in version control,
-# same reasoning as .env.example. Copy it to the server, fill it in there —
-# e.g. as /etc/nginx/sites-available/default (or /etc/nginx/conf.d/edge.conf)
-# — and don't commit the filled-in version back to this repo.
+# Bare-metal nginx config for the RU Origin VPS — NOT part of the Docker stack.
+# This is a TEMPLATE (hence .example): once you fill in the domain and secret
+# path, the result contains values you don't want in version control, same
+# reasoning as .env.example. Copy it to the server, fill it in there — e.g.
+# as /etc/nginx/sites-available/default (or /etc/nginx/conf.d/edge.conf) —
+# and don't commit the filled-in version back to this repo.
 #
-# Installed via `apt install nginx`, alongside Xray/3x-ui on the same host.
+# Installed via `apt install nginx`, alongside Xray on the same host.
 #
-# This is the one thing on the box that owns :80/:443. It is the actual
-# "origin" the CDN talks to. It routes traffic two ways:
+# ── Where this box sits in the chain ────────────────────────────────────────
+#   Client -> Yandex Cloud CDN -> THIS SERVER (RU) -> Xray/Reality -> EU server
+#                                                                     (nginx + this
+#                                                                      Laravel app,
+#                                                                      the real
+#                                                                      internet exit)
 #
-#   - the VPN path ($secret_path below) → Xray, listening on 127.0.0.1:8080
-#   - everything else                   → this Laravel app, via the
-#                                          docker-compose.prod.yml stack's
-#                                          nginx container, published as
-#                                          127.0.0.1:8081 (see docker-compose.prod.yml)
+# This RU box is a relay, not a website host: it terminates TLS from the CDN
+# and routes every request two ways, it doesn't serve the site itself.
 #
-# The Laravel site is the real "cover" — not a placeholder page. To anyone
-# who isn't your VPN client (or anyone probing the origin IP directly), this
-# is just a working portfolio site.
+#   - the VPN path ($secret_path below) → local Xray XHTTP inbound on
+#     127.0.0.1:8003 (see docker/xray/ru-origin-config.json.example), which
+#     forwards on to the EU server over VLESS + Reality.
+#   - everything else (the cover site) → reverse-proxied over WireGuard to
+#     the EU server's nginx/Laravel stack at 10.66.66.2:8081 (see
+#     docker/wireguard/ru-origin-wg0.conf.example and docker-compose.prod.yml,
+#     which now runs on the EU box, not this one).
+#
+# The VPN path uses OPTIONS as the wire-level method (not GET, not POST) —
+# this matches the "universal" Yandex Cloud CDN instruction this was built
+# from, which tested it against the current CDN panel and ships its own
+# verification step (see the /cdn-check location below — run the curl check
+# from that instruction against your own CDN resource before trusting this;
+# don't take either instruction's method choice on faith). A local `map`
+# below turns OPTIONS back into POST only for the connection to Xray, since
+# Xray's own inbound expects a normal method there — the CDN and any observer
+# on the wire only ever see OPTIONS.
 #
 # Fill in before deploying:
-#   - $origin_domain           the domain the CDN uses to reach this origin
-#                               (the one with an A record pointing at this VPS —
-#                               "cdn.yourdomain.com" in the guide's naming)
-#   - $secret_path              must match streamSettings.xhttpSettings.path
-#                               in the Xray inbound config
-#   - fullchain.pem / privkey.pem paths from certbot, issued for $origin_domain
+#   - REPLACE_WITH_ORIGIN_DOMAIN   the domain the CDN uses to reach this origin
+#                                   (the one with an A record pointing at this
+#                                   VPS — "origin.example.com" in the guide's
+#                                   naming)
+#   - REPLACE_WITH_SECRET_PATH     must match xhttpSettings.path in
+#                                   docker/xray/ru-origin-config.json.example
+#   - fullchain.pem / privkey.pem paths from certbot, issued for the origin domain
 #
 # Before relying on the real_ip block below in production: confirm YC CDN
 # actually forwards the visitor's IP as X-Forwarded-For. Yandex's docs don't
@@ -58,6 +74,13 @@ real_ip_recursive on;
 # for a VPN endpoint you're trying to keep off censors' radar, that's the
 # whole ballgame, not just a header-spoofing nuisance.
 
+# OPTIONS on the wire (from the CDN) becomes POST for the local Xray inbound
+# only. Everything else passes through unchanged.
+map $request_method $xhttp_proxy_method {
+    default  $request_method;
+    OPTIONS  POST;
+}
+
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -79,35 +102,57 @@ server {
 
     ssl_certificate     /etc/letsencrypt/live/REPLACE_WITH_ORIGIN_DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/REPLACE_WITH_ORIGIN_DOMAIN/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
 
-    # ── VPN path: XHTTP → Xray ──────────────────────────────────────────────
-    # Must match streamSettings.xhttpSettings.path in the Xray inbound.
+    client_max_body_size 0;
+    client_header_buffer_size 64k;
+    large_client_header_buffers 8 128k;
+    http2_max_field_size 128k;
+    http2_max_header_size 128k;
+
+    # Debug endpoint to verify OPTIONS-with-a-body actually survives the CDN
+    # intact, before trusting the VPN path. Remove once confirmed working, or
+    # leave it — it reveals nothing except that this origin exists and echoes
+    # request metadata, which is no more informative than any other 204 stub.
+    location = /cdn-check {
+        add_header X-CDN-Origin "ok" always;
+        add_header X-Origin-Method $request_method always;
+        add_header X-Origin-Content-Length $http_content_length always;
+        return 204;
+    }
+
+    # ── VPN path: XHTTP → local Xray → Reality → EU exit ────────────────────
+    # Must match xhttpSettings.path in docker/xray/ru-origin-config.json.example.
     location /REPLACE_WITH_SECRET_PATH {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8003;
+        proxy_method $xhttp_proxy_method;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
         proxy_set_header Connection "";
+
+        proxy_pass_request_headers on;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_cache off;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
-        proxy_buffer_size 32k;
-        proxy_buffers 8 32k;
-        client_max_body_size 0;
-        add_header X-Accel-Buffering no always;
-        add_header Cache-Control "no-store, no-transform" always;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
         access_log /var/log/nginx/xhttp_access.log;
     }
 
-    # ── Everything else: the real site ──────────────────────────────────────
-    # Ordinary reverse proxy, no XHTTP-specific tuning — buffering stays on,
-    # this is a normal web app (including its own /up health check; no need
-    # for a separate fake one here now that a real site is behind this).
+    # ── Everything else: the real site, relayed to the EU box ──────────────
+    # Ordinary reverse proxy over the private WireGuard link, no XHTTP-specific
+    # tuning — buffering stays on, this is a normal web app (including its own
+    # /up health check; no need for a separate fake one here now that a real
+    # site is behind this). 10.66.66.2 is the EU server's WireGuard address —
+    # see docker/wireguard/ru-origin-wg0.conf.example. This link never touches
+    # the public internet, so it doesn't need its own TLS: WireGuard already
+    # encrypts it, and TLS from the CDN was already terminated above.
     location / {
-        proxy_pass http://127.0.0.1:8081;
+        proxy_pass http://10.66.66.2:8081;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

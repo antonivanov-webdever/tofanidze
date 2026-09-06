@@ -1,8 +1,12 @@
-# Production compose for a VPS where:
-#   - MySQL runs as its own container, managed by this stack (no manual install)
-#   - this app is the "cover site" behind an Xray/XHTTP + CDN chain: a
-#     bare-metal nginx on the same host (docker/nginx/edge.conf.example) owns :80/:443,
-#     terminates TLS, routes the VPN path to Xray and everything else here
+# Production compose — runs on the EU Exit server in this chain:
+#
+#   Client -> Yandex Cloud CDN -> RU Origin (nginx + Xray XHTTP)
+#             -> Xray/Reality -> THIS SERVER (EU): Xray exit + this stack
+#
+# This box is both the VPN's actual internet egress point (Xray Reality
+# inbound, running outside this compose file — see
+# docker/xray/eu-exit-config.json.example) and the host for the real "cover"
+# website. MySQL runs as its own container here too (no manual install needed).
 #
 # Usage:
 #   cp .env.example .env.prod   # fill in real values, see notes below
@@ -18,10 +22,13 @@
 # MySQL's port is intentionally NOT published to the host or the internet —
 # only the `app` service can reach it, over the internal `web` network.
 #
-# nginx here is deliberately NOT reachable from outside this host (see the
-# port mapping below) — the bare-metal edge nginx is the only thing allowed
-# to talk to it, over loopback. Setting this up together with the edge
-# config and Xray is covered in the README's
+# nginx here binds ONLY to this server's WireGuard address (10.66.66.2) — not
+# 127.0.0.1, and not the public interface. The only thing that can ever reach
+# it is the RU Origin's edge nginx, over the private WireGuard link (see
+# docker/wireguard/eu-exit-wg0.conf.example). Set up WireGuard on this host
+# BEFORE starting this stack — the 10.66.66.2 address it binds to doesn't
+# exist until the wg0 interface is up, and `docker compose up` will fail to
+# bind the port otherwise. Full picture in the README's
 # "Production: VPS behind a CDN, sharing a host with Xray/XHTTP" section.
 
 services:
@@ -62,8 +69,10 @@ services:
     restart: unless-stopped
     depends_on: [app]
     ports:
-      # Loopback-only: reachable from the host's edge nginx, not the internet.
-      - "127.0.0.1:8081:80"
+      # Bound to this server's WireGuard address only — reachable from the RU
+      # Origin's edge nginx over the private wg0 link, not from the internet
+      # and not even from this host's own public interface.
+      - "10.66.66.2:8081:80"
     volumes:
       - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [web]
